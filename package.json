@@ -1,0 +1,11 @@
+{
+  "name": "nichijou",
+  "private": true,
+  "type": "module",
+  "description": "日常 — caderno diário de tarefas (PWA).",
+  "scripts": {
+    "start": "python3 -m http.server 8080",
+    "test": "node --test tests/*.test.mjs",
+    "e2e": "node tests/e2e.cjs"
+  }
+}
