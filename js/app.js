@@ -5,7 +5,7 @@ import * as D from './dates.js';
 import { store } from './store.js';
 import { sync } from './sync.js';
 
-const VERSION = '1.0.0';
+const VERSION = '1.1.0';
 const $app = document.getElementById('app');
 const wide = window.matchMedia('(min-width: 820px)');
 
@@ -24,6 +24,11 @@ const UI = {
   connecting: false
 };
 
+/** Primeira letra maiúscula, sem estragar palavras como "iPhone". */
+const capitalize = s => {
+  const t = String(s).trimStart();
+  return /^\p{Ll}(?!\p{Lu})/u.test(t) ? t[0].toLocaleUpperCase('pt-BR') + t.slice(1) : t;
+};
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const doc = () => store.doc;
 const isTablet = () => wide.matches;
@@ -56,7 +61,7 @@ const ARROW_BACK = '↩︎'; // ↩ como texto (sem virar emoji no iOS)
 function row(it) {
   if (UI.editing === it.id) {
     return `<div class="row" data-id="${it.id}"><div class="mnote"></div><div class="box">${boxSvg(it.status)}</div>
-      <input class="edit" id="edit-${it.id}" data-edit="${it.id}" value="${esc(it.text)}" aria-label="Editar tarefa" enterkeyhint="done" autocomplete="off"><span></span></div>`;
+      <input class="edit" id="edit-${it.id}" data-edit="${it.id}" value="${esc(it.text)}" aria-label="Editar tarefa" enterkeyhint="done" autocomplete="off" autocapitalize="sentences"><span></span></div>`;
   }
   const note = it.from ? `${ARROW_BACK} ${place(it.from)}` : '';
   const tail = it.status === 'moved' && it.movedTo ? `<span class="tail">→ ${place(it.movedTo)}</span>` : '';
@@ -67,7 +72,7 @@ function row(it) {
 }
 
 const addRow = list => `<div class="add"><span class="plus" aria-hidden="true">+</span>
-  <input id="add-${list}" data-add="${list}" placeholder="${list === M.DUMP ? 'despeja aqui…' : 'escreva aqui…'}" aria-label="Nova tarefa" autocomplete="off" autocorrect="on" enterkeyhint="enter"></div>`;
+  <input id="add-${list}" data-add="${list}" placeholder="${list === M.DUMP ? '…' : 'escreva aqui…'}" aria-label="Nova tarefa" autocomplete="off" autocorrect="on" autocapitalize="sentences" enterkeyhint="enter"></div>`;
 
 function daySheet() {
   const k = UI.day, its = M.listItems(doc(), k);
@@ -96,7 +101,7 @@ function dumpSheet() {
     <div class="sheet-inner">
       <div class="head">
         <div class="h1"><span class="printed">Sem data</span><span class="blank">${open} ${open === 1 ? 'aberta' : 'abertas'}</span></div>
-        <div class="h2"><span></span><span class="weekday">Dump</span><span class="rel">o que vier na cabeça</span><span></span><span></span></div>
+        <div class="h2"><span></span><span class="weekday">Dump</span><span></span><span></span><span></span></div>
       </div>
       <div class="list" data-list="dump">${its.map(row).join('')}</div>
       ${addRow(M.DUMP)}
@@ -190,7 +195,10 @@ function settingsPanel() {
         <p class="muted">Gist secreto não aparece em lugar nenhum, mas quem tiver o link exato consegue ler. Ok pra tarefas; não anote senhas.</p></details>`;
   }
   const standalone = window.navigator.standalone || window.matchMedia('(display-mode: standalone)').matches;
+  const theme = m.theme || 'system';
+  const tb = (v, label) => `<button data-act="theme" data-id="${v}" aria-pressed="${theme === v}">${label}</button>`;
   return `<h2>Caderno</h2>
+    <h3>Aparência</h3><div class="seg" role="group" aria-label="Tema">${tb('system', 'Sistema')}${tb('light', 'Claro')}${tb('dark', 'Escuro')}</div>
     <h3>Sincronizar iPhone e iPad</h3>${syncBlock}
     <h3>Backup</h3><p class="muted">Um arquivo com tudo. No iPhone, abre o Compartilhar pra salvar no Arquivos/iCloud. Importar junta o backup com o que já está aqui.</p>
     <div class="btn-row two"><button class="btn ghost" data-act="export">Exportar</button><button class="btn ghost" data-act="import">Importar</button></div>
@@ -439,9 +447,13 @@ $app.addEventListener('keydown', e => {
   const add = e.target.closest('[data-add]');
   if (add && e.key === 'Enter' && !e.isComposing) {
     e.preventDefault();
-    const list = add.dataset.add, text = add.value;
+    const list = add.dataset.add, text = capitalize(add.value);
     if (!text.trim()) return;
     add.value = '';
+    // iPhone: depois de limpar o campo por código o teclado não religa o Shift.
+    // Tirar e devolver o foco no mesmo toque faz ele recomeçar a frase.
+    add.blur();
+    add.focus();
     act(d => M.addItem(d, list, text));
     const n = $app.querySelector(`#add-${CSS.escape(list)}`);
     if (n) { n.focus(); n.scrollIntoView({ block: 'nearest' }); }
@@ -534,6 +546,7 @@ async function onAction(a, id) {
       }
       break;
     }
+    case 'theme': store.setMeta({ theme: id === 'system' ? null : id }); applyTheme(); break;
     case 'disconnect': sync.disconnect(); toast('Desconectado. Os dados continuam neste aparelho.'); return;
     case 'sync-now': sync.now(); break;
     case 'export': return exportBackup();
@@ -580,7 +593,20 @@ function pickImport() {
   input.click();
 }
 
+/* ---------- tema ---------- */
+const PAPER = { light: '#efe5d0', dark: '#27221c' };
+function applyTheme() {
+  const t = store.meta.theme;
+  const root = document.documentElement;
+  if (t === 'light' || t === 'dark') root.dataset.theme = t; else delete root.dataset.theme;
+  document.querySelectorAll('meta[name="theme-color"]').forEach(m => {
+    const own = m.media.includes('dark') ? PAPER.dark : PAPER.light;
+    m.content = t === 'light' || t === 'dark' ? PAPER[t] : own;
+  });
+}
+
 /* ---------- início ---------- */
+applyTheme();
 store.subscribe(() => render());
 sync.subscribe(() => render());
 wide.addEventListener('change', () => render());
