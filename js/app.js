@@ -5,7 +5,7 @@ import * as D from './dates.js';
 import { store } from './store.js';
 import { sync } from './sync.js';
 
-const VERSION = '1.1.0';
+const VERSION = '1.2.0';
 const $app = document.getElementById('app');
 const wide = window.matchMedia('(min-width: 820px)');
 
@@ -120,19 +120,35 @@ function syncLabel() {
   }
 }
 
+const ICON = {
+  gear: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2.2"/><circle cx="8" cy="17" r="2.2"/></svg>',
+  page: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><rect x="5" y="3.5" width="14" height="17" rx="2"/><path d="M8.5 8.5h7M8.5 12h7M8.5 15.5h4"/></svg>',
+  dump: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 13.5 6.6 6h10.8L20 13.5V18a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 18z"/><path d="M4 13.5h4.5l1.2 2.2h4.6l1.2-2.2H20"/></svg>'
+};
+
 function chrome() {
   const [s, label] = syncLabel();
+  // no iPad os ajustes ficam na barra lateral
   return `<div class="chrome"><span class="brand">日常</span><span class="chrome-right">
     <button class="sync" data-act="settings" data-s="${s}"><span class="dot"></span>${label}</button>
-    <button class="gear" data-act="settings" aria-label="Ajustes: sincronizar, backup e ajuda"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2.2"/><circle cx="8" cy="17" r="2.2"/></svg></button>
+    ${isTablet() ? '' : `<button class="gear" data-act="settings" aria-label="Ajustes: sincronizar, backup e ajuda">${ICON.gear}</button>`}
   </span></div>`;
 }
 
 function tabs() {
-  const dumpOpen = M.listItems(doc(), M.DUMP).filter(i => i.status === 'open').length;
   return `<nav class="tabs" role="tablist">
     <button role="tab" data-act="tab-day" aria-selected="${UI.view === 'day'}"><span>Hoje</span></button>
-    <button role="tab" data-act="tab-dump" aria-selected="${UI.view === 'dump'}"><span>Dump</span>${dumpOpen ? `<b class="n">${dumpOpen}</b>` : ''}</button>
+    <button role="tab" data-act="tab-dump" aria-selected="${UI.view === 'dump'}"><span>Dump</span></button>
+  </nav>`;
+}
+
+/** iPad: barra lateral fixa; uma página por vez. */
+function rail() {
+  return `<nav class="rail" aria-label="Páginas">
+    <button data-act="tab-day" aria-current="${UI.view === 'day'}">${ICON.page}<span>Hoje</span></button>
+    <button data-act="tab-dump" aria-current="${UI.view === 'dump'}">${ICON.dump}<span>Dump</span></button>
+    <span class="rail-space"></span>
+    <button data-act="settings" aria-label="Ajustes: sincronizar, backup e ajuda">${ICON.gear}<span>Ajustes</span></button>
   </nav>`;
 }
 
@@ -247,6 +263,8 @@ function softRender(lists) {
   if (c) c.outerHTML = chrome();
   const t = $app.querySelector('.tabs');
   if (t) t.outerHTML = tabs();
+  const r = $app.querySelector('.rail');
+  if (r) r.outerHTML = rail();
   if (lists) {
     $app.querySelectorAll('.sheet').forEach(s => {
       const list = s.querySelector('.list');
@@ -282,8 +300,8 @@ function fullRender() {
 
   const tablet = isTablet();
   $app.className = tablet ? 'tablet' : 'phone';
-  const pages = tablet ? daySheet() + dumpSheet() : (UI.view === 'day' ? daySheet() : dumpSheet());
-  $app.innerHTML = `${chrome()}<div class="pages">${pages}</div>${tablet ? '' : tabs()}${overlay()}${UI.toast ? `<div class="toast" role="status">${esc(UI.toast)}</div>` : ''}`;
+  const page = UI.view === 'day' ? daySheet() : dumpSheet();
+  $app.innerHTML = `${chrome()}<div class="pages">${tablet ? rail() : ''}${page}</div>${tablet ? '' : tabs()}${overlay()}${UI.toast ? `<div class="toast" role="status">${esc(UI.toast)}</div>` : ''}`;
 
   $app.querySelectorAll('.sheet').forEach(s => { if (scroll[s.dataset.sheet] != null && !(UI.turn && s.dataset.sheet === 'day')) s.scrollTop = scroll[s.dataset.sheet]; });
   const p = $app.querySelector('.panel');

@@ -62,11 +62,14 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, [tabindex]:fo
 
 /* ---------- folhas ---------- */
 .pages { flex: 1; min-height: 0; display: flex; padding-left: env(safe-area-inset-left, 0px); padding-right: env(safe-area-inset-right, 0px); background: var(--paper); }
-.tablet .pages { display: grid; grid-template-columns: 1fr 1fr; position: relative; }
-.tablet .pages::after {
-  content: ""; position: absolute; top: 0; bottom: 0; left: 50%; width: 34px; transform: translateX(-50%);
-  background: linear-gradient(90deg, transparent, var(--shadow) 46%, var(--shadow) 54%, transparent); opacity: .55; pointer-events: none;
+.rail {
+  flex: none; width: 84px; display: flex; flex-direction: column; align-items: center; gap: 6px;
+  padding: 14px 0 max(14px, env(safe-area-inset-bottom, 0px)); background: var(--paper-edge); border-right: 1px solid var(--rule);
 }
+.rail button { width: 66px; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 10px 0; border-radius: 12px; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-soft); }
+.rail button svg { width: 22px; height: 22px; }
+.rail button[aria-current="true"] { background: var(--paper); color: var(--ink); box-shadow: 0 1px 0 var(--rule); }
+.rail-space { flex: 1; }
 .sheet {
   flex: 1; min-width: 0; overflow-y: auto; overscroll-behavior: contain; touch-action: pan-y; -webkit-overflow-scrolling: touch;
   background-color: var(--paper);
@@ -128,7 +131,6 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, [tabindex]:fo
 .tabs button { height: 52px; font-size: 12px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-soft); display: flex; align-items: center; justify-content: center; gap: 6px; }
 .tabs button[aria-selected="true"] { color: var(--ink); }
 .tabs button[aria-selected="true"] span { border-bottom: 2px solid var(--ink); padding-bottom: 3px; }
-.tabs .n { font-family: var(--hand); font-size: var(--fs-sm); letter-spacing: 0; color: var(--red); text-transform: none; }
 
 /* ---------- folhas sobrepostas ---------- */
 .overlay { position: absolute; inset: 0; background: var(--scrim); display: flex; align-items: flex-end; justify-content: center; z-index: 30; animation: fade .18s ease-out; }
