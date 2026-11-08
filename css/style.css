@@ -16,13 +16,20 @@
   --line: 38px; --margin: 52px;
   color-scheme: light;
 }
+/* Tema: segue o sistema, a não ser que o seletor force claro ou escuro (data-theme no <html>) */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --paper: #27221c; --paper-edge: #2e2821; --rule: rgba(225, 195, 150, .13); --margin-line: rgba(205, 115, 95, .45);
     --ink: #ece2cd; --ink-soft: #9a8f7b; --red: #e08b75; --chip: #2f2922; --ok: #7fb98d; --warn: #e0b45e;
     --shadow: rgba(0, 0, 0, .55); --scrim: rgba(0, 0, 0, .5);
     color-scheme: dark;
   }
+}
+:root[data-theme="dark"] {
+  --paper: #27221c; --paper-edge: #2e2821; --rule: rgba(225, 195, 150, .13); --margin-line: rgba(205, 115, 95, .45);
+  --ink: #ece2cd; --ink-soft: #9a8f7b; --red: #e08b75; --chip: #2f2922; --ok: #7fb98d; --warn: #e0b45e;
+  --shadow: rgba(0, 0, 0, .55); --scrim: rgba(0, 0, 0, .5);
+  color-scheme: dark;
 }
 
 * { box-sizing: border-box; }
@@ -177,6 +184,9 @@ ol.steps li { margin: 3px 0; }
 details { margin-top: 8px; }
 summary { cursor: pointer; font-size: 14px; text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 3px; }
 a { color: var(--ink); }
+.seg { display: grid; grid-template-columns: repeat(3, 1fr); border: 1px solid var(--rule); border-radius: 12px; padding: 3px; gap: 3px; }
+.seg button { padding: 9px 6px; border-radius: 9px; font-size: 14px; color: var(--ink-soft); }
+.seg button[aria-pressed="true"] { background: var(--ink); color: var(--paper); }
 .foot { margin-top: 18px; font-size: 12px; color: var(--ink-soft); text-align: center; }
 
 .toast {

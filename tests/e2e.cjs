@@ -217,7 +217,39 @@ const step = (name) => console.log('•', name);
     step('modo escuro');
     await phone.emulateMedia({ colorScheme: 'dark' });
     await phone.screenshot({ path: `${SHOTS}/05-iphone-escuro.png` });
+
+    step('seletor de tema: sistema escuro, mas "Claro" força papel bege e fica salvo');
+    const paper = () => phone.evaluate(() => getComputedStyle(document.body).backgroundColor);
+    assert.equal(await paper(), 'rgb(39, 34, 28)');
+    await phone.click('.gear');
+    await phone.click('[data-act="theme"][data-id="light"]');
+    assert.equal(await paper(), 'rgb(239, 229, 208)');
+    assert.ok(await phone.$('.overlay .seg'), 'ajustes continuam abertos');
+    await phone.waitForTimeout(300);
+    await phone.screenshot({ path: `${SHOTS}/08-iphone-ajustes-tema.png` });
+    await phone.click('[data-act="close"]');
+    await phone.reload();
+    await phone.waitForSelector('.sheet');
+    assert.equal(await paper(), 'rgb(239, 229, 208)');
+    await phone.click('.gear');
+    await phone.click('[data-act="theme"][data-id="dark"]');
     await phone.emulateMedia({ colorScheme: 'light' });
+    assert.equal(await paper(), 'rgb(39, 34, 28)');
+    await phone.click('[data-act="theme"][data-id="system"]');
+    assert.equal(await paper(), 'rgb(239, 229, 208)');
+    await phone.click('[data-act="close"]');
+
+    step('primeira letra maiúscula (sem estragar "iPhone")');
+    await add(phone, TODAY, 'pagar boleto');
+    await add(phone, TODAY, 'iPhone pra assistência');
+    const caps = await rows(phone);
+    assert.ok(caps.includes('Pagar boleto') && caps.includes('iPhone pra assistência'));
+
+    step('dump sem subtítulo e com "…" no campo');
+    await phone.click('[data-act="tab-dump"]');
+    assert.ok(!(await phone.$eval('[data-sheet="dump"] .head', e => e.textContent)).includes('vier na cabeça'));
+    assert.equal(await phone.$eval('#add-dump', e => e.placeholder), '…');
+    await phone.click('[data-act="tab-day"]');
 
     /* ===== Sincronização iPhone ↔ iPad ===== */
     step('token errado mostra erro claro');
