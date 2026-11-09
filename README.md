@@ -9,13 +9,18 @@ Caderno diário de tarefas para iPhone e iPad. Funciona como um caderno de papel
 | Ação | Como |
 |---|---|
 | Nova tarefa | escreva na linha “escreva aqui…” e aperte Enter (o cursor continua lá para a próxima) |
-| Marcar / desmarcar | toque na tarefa |
+| Marcar / desmarcar | toque na **caixinha** |
+| Subtarefas | toque no **texto** da tarefa: abre a sanfona com as subtarefas e uma linha para escrever mais; toque de novo para fechar |
 | Adiar, riscar, mandar pro dump, editar, excluir | botão **⋯** da linha |
-| Reordenar | segure a linha e arraste |
+| Reordenar | segure a linha e arraste (a tarefa vai com as subtarefas) |
 | Outro dia | deslize a folha para os lados ou use ‹ › (tocar no nome do dia volta para hoje) |
-| Dump | aba **Dump** no iPhone; no iPad fica na página da direita |
+| Dump | aba **Dump** no iPhone; no iPad, barra lateral à esquerda |
 
 Marcas no papel: ✓ feita · → adiada (fica registrada no dia original) · — riscada. Uma tarefa que veio de outro dia ou do dump mostra a origem na margem vermelha (↩ ontem, ↩ dump).
+
+**Ordem automática:** abertas em cima (na ordem que você escolher) → feitas → adiadas → riscadas no fim. Vale também dentro das subtarefas.
+
+**Subtarefas:** marcar a principal marca todas; terminar a última marca a principal sozinha; reabrir uma subtarefa reabre a principal. “1/3” ao lado da tarefa mostra o progresso. Ao adiar, só as subtarefas que faltavam vão para o dia seguinte.
 
 **Revisão da manhã:** ao abrir no dia seguinte, o app mostra o que ficou pendente e você escolhe o que vem para hoje. O que não vier continua no dia original (ou é riscado, se você marcar essa opção).
 

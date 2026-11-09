@@ -5,7 +5,7 @@ import * as D from './dates.js';
 import { store } from './store.js';
 import { sync } from './sync.js';
 
-const VERSION = '1.2.0';
+const VERSION = '1.3.0';
 const $app = document.getElementById('app');
 const wide = window.matchMedia('(min-width: 820px)');
 
@@ -16,6 +16,7 @@ const UI = {
   turn: '',
   sheet: null,            // { type: 'menu', id } | { type: 'review' } | { type: 'settings' }
   editing: null,
+  expanded: new Set(),    // tarefas com as subtarefas abertas (só neste aparelho)
   reviewSel: {},
   reviewDrop: false,
   toast: null,
@@ -58,18 +59,36 @@ const STATUS_LABEL = { open: 'pendente', done: 'feita', moved: 'adiada', dropped
 const ARROW_BACK = '↩︎'; // ↩ como texto (sem virar emoji no iOS)
 
 /* ---------- partes da tela ---------- */
-function row(it) {
+// Caixinha marca; texto abre/fecha as subtarefas (sanfona). Subtarefas ficam recuadas.
+function row(it, sub = false) {
+  const cls = `row ${sub ? 'sub ' : ''}`;
   if (UI.editing === it.id) {
-    return `<div class="row" data-id="${it.id}"><div class="mnote"></div><div class="box">${boxSvg(it.status)}</div>
-      <input class="edit" id="edit-${it.id}" data-edit="${it.id}" value="${esc(it.text)}" aria-label="Editar tarefa" enterkeyhint="done" autocomplete="off" autocapitalize="sentences"><span></span></div>`;
+    return `<div class="${cls}" data-id="${it.id}"><div class="mnote"></div><div class="box">${boxSvg(it.status)}</div>
+      <input class="edit" id="edit-${it.id}" data-edit="${it.id}" value="${esc(it.text)}" aria-label="Editar tarefa" enterkeyhint="done" autocomplete="off" autocapitalize="sentences"><span></span><span></span></div>`;
   }
-  const note = it.from ? `${ARROW_BACK} ${place(it.from)}` : '';
-  const tail = it.status === 'moved' && it.movedTo ? `<span class="tail">→ ${place(it.movedTo)}</span>` : '';
-  return `<div class="row ${it.status}" data-id="${it.id}" role="button" tabindex="0" aria-label="${esc(it.text)}, ${STATUS_LABEL[it.status]}">
-    <div class="mnote">${note}</div><div class="box">${boxSvg(it.status, UI.drawId === it.id)}</div>
-    <div class="txt">${esc(it.text)}${tail}</div>
-    <button class="more" data-act="more" data-id="${it.id}" aria-label="Opções">⋯</button></div>`;
+  const note = !sub && it.from ? `${ARROW_BACK} ${place(it.from)}` : '';
+  const tail = !sub && it.status === 'moved' && it.movedTo ? `<span class="tail">→ ${place(it.movedTo)}</span>` : '';
+  const prog = sub ? '' : M.progress(doc(), it.id);
+  const open = !sub && UI.expanded.has(it.id);
+  const progHtml = prog ? `<span class="prog">${prog}<span class="chev${open ? ' open' : ''}" aria-hidden="true">›</span></span>` : '<span></span>';
+  const textLabel = sub ? esc(it.text) : `${esc(it.text)}: ${open ? 'fechar' : 'abrir'} subtarefas`;
+  return `<div class="${cls}${it.status}" data-id="${it.id}" data-key="${it.id}">
+    <div class="mnote">${note}</div>
+    <span class="box" role="button" tabindex="0" data-act="check" data-id="${it.id}" aria-label="${esc(it.text)}: ${STATUS_LABEL[it.status]}. Marcar">${boxSvg(it.status, UI.drawId === it.id)}</span>
+    <span class="txt" ${sub ? '' : `role="button" tabindex="0" data-act="open" data-id="${it.id}" aria-expanded="${open}" aria-label="${textLabel}"`}>${esc(it.text)}${tail}</span>
+    ${progHtml}
+    <button class="more" data-act="more" data-id="${it.id}" aria-label="Opções de ${esc(it.text)}">⋯</button></div>`;
 }
+
+/** Tarefa principal + (se aberta) subtarefas e a linha para escrever mais uma. */
+function group(it) {
+  const open = UI.expanded.has(it.id);
+  const subs = open ? M.children(doc(), it.id) : [];
+  return `<div class="group" data-id="${it.id}" data-key="g:${it.id}">${row(it)}${open ? `<div class="subs" data-parent="${it.id}">${subs.map(c => row(c, true)).join('')}</div>${addSubRow(it.id)}` : ''}</div>`;
+}
+
+const addSubRow = pid => `<div class="add sub"><span class="plus" aria-hidden="true">+</span>
+  <input id="sub-${pid}" data-subadd="${pid}" placeholder="subtarefa…" aria-label="Nova subtarefa" autocomplete="off" autocorrect="on" autocapitalize="sentences" enterkeyhint="enter"></div>`;
 
 const addRow = list => `<div class="add"><span class="plus" aria-hidden="true">+</span>
   <input id="add-${list}" data-add="${list}" placeholder="${list === M.DUMP ? '…' : 'escreva aqui…'}" aria-label="Nova tarefa" autocomplete="off" autocorrect="on" autocapitalize="sentences" enterkeyhint="enter"></div>`;
@@ -86,10 +105,10 @@ function daySheet() {
           <button class="weekday" data-act="today" title="Voltar pra hoje">${D.weekday(k)}</button><span class="rel">${rel}</span><span></span>
           <button class="nav next" data-act="next" aria-label="Próximo dia">›</button></div>
       </div>
-      <div class="list" data-list="${k}">${its.map(row).join('')}</div>
+      <div class="list" data-list="${k}">${its.map(group).join('')}</div>
       <div class="empty" ${its.length ? 'hidden' : ''}>${k > UI.now ? 'folha em branco, planeja aqui' : k < UI.now ? 'nada anotado' : ''}</div>
       ${addRow(k)}
-      ${firstUse && k === UI.now ? '<div class="hint">toque pra marcar · ⋯ pra opções · segure e arraste pra reordenar</div>' : ''}
+      ${firstUse && k === UI.now ? '<div class="hint">caixinha marca · texto abre subtarefas · segure e arraste pra reordenar</div>' : ''}
     </div>
   </section>`;
 }
@@ -103,7 +122,7 @@ function dumpSheet() {
         <div class="h1"><span class="printed">Sem data</span><span class="blank">${open} ${open === 1 ? 'aberta' : 'abertas'}</span></div>
         <div class="h2"><span></span><span class="weekday">Dump</span><span></span><span></span><span></span></div>
       </div>
-      <div class="list" data-list="dump">${its.map(row).join('')}</div>
+      <div class="list" data-list="dump">${its.map(group).join('')}</div>
       ${addRow(M.DUMP)}
     </div>
   </section>`;
@@ -156,6 +175,16 @@ function menuPanel(it) {
   const inDump = it.list === M.DUMP;
   const b = (a, g, label, cls = '') => `<button data-act="${a}" data-id="${it.id}" class="${cls}"><span class="g">${g}</span>${label}</button>`;
   const list = [];
+  const parent = it.parent && doc().items[it.parent];
+  if (parent) {
+    // subtarefa: vai e vem junto com a principal; aqui só conclui, risca, edita ou exclui
+    if (it.status === 'open') { list.push(b('m-done', '✓', 'Concluir')); list.push(b('m-drop', '—', 'Riscar')); }
+    else list.push(b('m-restore', '↺', 'Voltar a pendente'));
+    list.push(b('m-edit', '✎', 'Editar texto'));
+    list.push(b('m-del', '×', 'Excluir', 'danger'));
+    return `<p class="muted">Subtarefa de “${esc(parent.text)}” · ${STATUS_LABEL[it.status]}</p>
+      <div class="quote">${esc(it.text)}</div><div class="actions">${list.join('')}</div>`;
+  }
   if (it.status === 'open') {
     list.push(b('m-done', '✓', 'Concluir'));
     if (inDump) list.push(b('m-today', '↑', 'Puxar pra hoje'));
@@ -253,7 +282,10 @@ function render() {
   const ae = document.activeElement;
   const typingAdd = ae && $app.contains(ae) && ae.matches('[data-add]');
   const typingEdit = ae && $app.contains(ae) && ae.matches('[data-edit]') && UI.editing;
+  const typingSub = ae && $app.contains(ae) && ae.matches('[data-subadd]');
   if (typingEdit) { softRender(false); deferred = true; return; }
+  // escrevendo subtarefas: só a tarefa em questão é redesenhada; a reordenação da página espera o fim
+  if (typingSub && layoutKey() === lastLayout) { softRender(false); softRenderGroup(ae.dataset.subadd); deferred = true; return; }
   if (typingAdd && layoutKey() === lastLayout && !UI.turn) { softRender(true); return; }
   fullRender();
 }
@@ -269,7 +301,7 @@ function softRender(lists) {
     $app.querySelectorAll('.sheet').forEach(s => {
       const list = s.querySelector('.list');
       const its = M.listItems(doc(), list.dataset.list);
-      list.innerHTML = its.map(row).join('');
+      list.innerHTML = its.map(group).join('');
       const empty = s.querySelector('.empty');
       if (empty) empty.hidden = its.length > 0;
       if (s.dataset.sheet === 'dump') {
@@ -284,8 +316,22 @@ function softRender(lists) {
   UI.drawId = null;
 }
 
+function softRenderGroup(pid) {
+  const g = $app.querySelector(`.group[data-id="${CSS.escape(pid)}"]`);
+  const it = doc().items[pid];
+  if (!g || !it) return;
+  const main = g.querySelector(':scope > .row');
+  if (main) main.outerHTML = row(it);
+  const subs = g.querySelector(':scope > .subs');
+  if (subs) subs.innerHTML = M.children(doc(), pid).map(c => row(c, true)).join('');
+}
+
 function fullRender() {
   deferred = false;
+  // FLIP: na mesma página, linhas que mudam de lugar (ordem automática) deslizam até a nova posição
+  const animate = layoutKey() === lastLayout && !UI.turn && !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const before = {};
+  if (animate) $app.querySelectorAll('.list [data-key]').forEach(el => { before[el.dataset.key] = el.getBoundingClientRect().top; });
   lastLayout = layoutKey();
   const scroll = {};
   $app.querySelectorAll('.sheet').forEach(s => { scroll[s.dataset.sheet] = s.scrollTop; });
@@ -295,7 +341,7 @@ function fullRender() {
   const panelScroll = $app.querySelector('.panel')?.scrollTop || 0;
   const tokenVal = $app.querySelector('#token')?.value || '';
   const addVals = {};
-  $app.querySelectorAll('[data-add]').forEach(i => { if (i.value) addVals[i.id] = i.value; });
+  $app.querySelectorAll('[data-add], [data-subadd]').forEach(i => { if (i.value) addVals[i.id] = i.value; });
   const editVal = UI.editing ? $app.querySelector(`#edit-${CSS.escape(UI.editing)}`)?.value : null;
 
   const tablet = isTablet();
@@ -321,6 +367,21 @@ function fullRender() {
       f.focus({ preventScroll: true });
       if (caret && f.setSelectionRange) try { f.setSelectionRange(caret[0], caret[1]); } catch (_) {}
     }
+  }
+  if (animate) {
+    $app.querySelectorAll('.list [data-key]').forEach(el => {
+      const old = before[el.dataset.key];
+      if (old == null) return;
+      const dy = old - el.getBoundingClientRect().top;
+      if (Math.abs(dy) < 1) return;
+      el.style.transition = 'none';
+      el.style.transform = `translateY(${dy}px)`;
+      requestAnimationFrame(() => {
+        el.style.transition = 'transform .35s cubic-bezier(.2,.8,.2,1)';
+        el.style.transform = '';
+        el.addEventListener('transitionend', () => { el.style.transition = ''; }, { once: true });
+      });
+    });
   }
   UI.turn = '';
   UI.drawId = null;
@@ -375,7 +436,9 @@ $app.addEventListener('pointerdown', e => {
   if (!sheet) return;
   if (e.target.closest('input,textarea,button')) return;
   const r = e.target.closest('.row[data-id]');
-  G = { x: e.clientX, y: e.clientY, row: r && !UI.editing ? r : null, sheet, lifted: false, dragged: false, t: null };
+  // arrasta a tarefa inteira (com as subtarefas) ou só a subtarefa, entre as irmãs
+  const el = r && !UI.editing ? (r.classList.contains('sub') ? r : r.closest('.group')) : null;
+  G = { x: e.clientX, y: e.clientY, row: el, sheet, lifted: false, dragged: false, t: null };
   if (G.row) G.t = setTimeout(lift, 420);
 });
 
@@ -383,7 +446,7 @@ function lift() {
   if (!G) return;
   G.lifted = true;
   G.row.classList.add('lifted');
-  G.rows = [...G.row.parentNode.querySelectorAll('.row[data-id]')];
+  G.rows = [...G.row.parentNode.children].filter(c => c.matches('.group, .row[data-id]'));
   G.idx = G.rows.indexOf(G.row);
   G.rects = G.rows.map(r => r.getBoundingClientRect());
   G.h = G.rects[G.idx].height;
@@ -450,15 +513,11 @@ window.addEventListener('pointercancel', () => {
 $app.addEventListener('click', e => {
   const t = e.target.closest('[data-act]');
   // botões nunca são ambíguos; só um toque solto na linha logo após um gesto é descartado
-  if (Date.now() < suppressUntil) { suppressUntil = 0; if (!t || t.dataset.act === 'scrim') return; }
-  if (t && !(t.dataset.act === 'scrim' && e.target !== t)) { onAction(t.dataset.act, t.dataset.id); return; }
-  if (e.target.closest('.overlay')) return;
-  const r = e.target.closest('.row[data-id]');
-  if (r && !UI.editing) {
-    const id = r.dataset.id;
-    if (doc().items[id]?.status === 'open') UI.drawId = id;
-    act(d => M.toggle(d, id));
+  if (Date.now() < suppressUntil) {
+    suppressUntil = 0;
+    if (!t || t.dataset.act === 'scrim' || (t.closest('.row') && !t.matches('.more'))) return;
   }
+  if (t && !(t.dataset.act === 'scrim' && e.target !== t)) onAction(t.dataset.act, t.dataset.id);
 });
 
 $app.addEventListener('keydown', e => {
@@ -477,6 +536,18 @@ $app.addEventListener('keydown', e => {
     if (n) { n.focus(); n.scrollIntoView({ block: 'nearest' }); }
     return;
   }
+  const sub = e.target.closest('[data-subadd]');
+  if (sub && e.key === 'Enter' && !e.isComposing) {
+    e.preventDefault();
+    const pid = sub.dataset.subadd, text = capitalize(sub.value);
+    if (!text.trim()) { sub.blur(); return; } // Enter vazio: terminou
+    sub.value = '';
+    sub.blur();
+    sub.focus();
+    act(d => M.addSub(d, pid, text));
+    $app.querySelector(`#sub-${CSS.escape(pid)}`)?.scrollIntoView({ block: 'nearest' });
+    return;
+  }
   const ed = e.target.closest('[data-edit]');
   if (ed && (e.key === 'Enter' || e.key === 'Escape') && !e.isComposing) {
     e.preventDefault();
@@ -485,8 +556,8 @@ $app.addEventListener('keydown', e => {
     if (e.key === 'Enter') act(d => M.editItem(d, id, text)); else render();
     return;
   }
-  const r = e.target.closest('.row[data-id]');
-  if (r && e.target === r && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); act(d => M.toggle(d, r.dataset.id)); return; }
+  const rb = e.target.closest('[role="button"][data-act]');
+  if (rb && e.target === rb && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); onAction(rb.dataset.act, rb.dataset.id); return; }
   if (e.key === 'Escape' && UI.sheet) { closeSheet(); }
 });
 
@@ -496,6 +567,18 @@ $app.addEventListener('focusout', e => {
     const id = ed.dataset.edit, text = ed.value;
     UI.editing = null;
     setTimeout(() => act(d => M.editItem(d, id, text)), 0);
+    return;
+  }
+  // saiu da linha de subtarefa sem escrever nada numa tarefa sem subtarefas: fecha a sanfona
+  const sa = e.target.closest && e.target.closest('[data-subadd]');
+  if (sa && !sa.value.trim()) {
+    const pid = sa.dataset.subadd;
+    setTimeout(() => {
+      const a = document.activeElement;
+      if (a && a.matches && a.matches(`#sub-${CSS.escape(pid)}`)) return;
+      if (!M.children(doc(), pid).length && UI.expanded.delete(pid)) render();
+      else if (deferred) render();
+    }, 150);
     return;
   }
   // terminou de digitar: aplica o que ficou adiado
@@ -527,6 +610,17 @@ async function onAction(a, id) {
     case 'tab-dump': UI.view = 'dump'; break;
     case 'settings': UI.sheet = { type: 'settings' }; break;
     case 'more': UI.sheet = { type: 'menu', id }; break;
+    case 'check':
+      if (doc().items[id]?.status === 'open') UI.drawId = id;
+      return act(d => M.toggle(d, id));
+    case 'open': {
+      // texto da tarefa abre/fecha as subtarefas; sem subtarefas, já abre a linha para escrever a primeira
+      if (UI.expanded.has(id)) { UI.expanded.delete(id); break; }
+      UI.expanded.add(id);
+      render();
+      if (!M.children(doc(), id).length) $app.querySelector(`#sub-${CSS.escape(id)}`)?.focus();
+      return;
+    }
     case 'scrim': case 'close': case 'rv-close': return closeSheet();
     case 'm-done': close(); return act(d => { UI.drawId = id; M.setStatus(d, id, 'done'); });
     case 'm-post': {
@@ -540,7 +634,12 @@ async function onAction(a, id) {
     case 'm-today': close(); act(d => M.toDay(d, id, UI.now)); return toast('Puxada pra hoje');
     case 'm-restore': close(); return act(d => M.restore(d, id));
     case 'm-edit': close(); UI.editing = id; break;
-    case 'm-del': close(); act(d => M.removeItem(d, id)); return toast('Excluída');
+    case 'm-del': {
+      close();
+      const withSubs = M.children(doc(), id).length > 0;
+      act(d => M.removeItem(d, id));
+      return toast(withSubs ? 'Excluída, com as subtarefas' : 'Excluída');
+    }
     case 'rv-go': {
       const p = M.pending(doc(), UI.now);
       const bring = p.filter(i => UI.reviewSel[i.id] !== false).map(i => i.id);
