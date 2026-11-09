@@ -12,7 +12,7 @@
   --shadow: rgba(70, 50, 20, .22); --scrim: rgba(40, 28, 10, .32);
   --hand: "Klee One", "Bradley Hand", cursive;
   --ui: "Atkinson Hyperlegible", -apple-system, system-ui, sans-serif;
-  --fs: 21px; --fs-big: 28px; --fs-sm: 17px; --fs-note: 13px;
+  --fs: 21px; --fs-sub: 19px; --fs-big: 28px; --fs-sm: 17px; --fs-note: 13px;
   --line: 38px; --margin: 52px;
   color-scheme: light;
 }
@@ -97,19 +97,28 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, [tabindex]:fo
 
 /* ---------- linhas ---------- */
 .list { position: relative; }
+.group { position: relative; }
 .row {
-  display: grid; grid-template-columns: var(--margin) 34px 1fr 44px; align-items: start; min-height: var(--line); position: relative;
-  user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; cursor: pointer; transition: transform .18s ease;
+  display: grid; grid-template-columns: var(--margin) 34px 1fr auto 44px; align-items: start; min-height: var(--line); position: relative;
+  user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; transition: transform .18s ease;
 }
-.row.lifted { background: var(--paper); box-shadow: 0 10px 26px var(--shadow); z-index: 3; transition: none; border-radius: 6px; }
+.row.sub, .add.sub { padding-left: 26px; }
+.group.lifted, .row.lifted { background: var(--paper); box-shadow: 0 10px 26px var(--shadow); z-index: 3; transition: none; border-radius: 6px; }
+.group.lifted .row { transition: none; }
 .mnote { font-family: var(--hand); font-size: var(--fs-note); letter-spacing: -.02em; line-height: var(--line); color: var(--red); text-align: right; padding-right: 7px; white-space: nowrap; overflow: hidden; }
-.box { height: var(--line); display: grid; place-items: center; }
+.box { height: var(--line); display: grid; place-items: center; cursor: pointer; border-radius: 8px; }
 .box svg { width: 24px; height: 24px; overflow: visible; }
+.sub .box svg { width: 20px; height: 20px; }
 .box .frame { fill: none; stroke: var(--ink); stroke-width: 1.6; stroke-linejoin: round; opacity: .85; }
 .box .mark { fill: none; stroke: var(--ink); stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 40; stroke-dashoffset: 0; }
 .box .mark.draw { animation: draw .28s ease-out; }
 @keyframes draw { from { stroke-dashoffset: 40; } }
-.txt { font-family: var(--hand); font-size: var(--fs); line-height: var(--line); color: var(--ink); padding: 0 4px; overflow-wrap: anywhere; }
+.txt { font-family: var(--hand); font-size: var(--fs); line-height: var(--line); color: var(--ink); padding: 0 4px; overflow-wrap: anywhere; min-width: 0; }
+.txt[role="button"] { cursor: pointer; }
+.sub .txt, .add.sub input { font-size: var(--fs-sub); }
+.prog { font-family: var(--hand); font-size: var(--fs-note); color: var(--red); line-height: var(--line); white-space: nowrap; padding-right: 2px; }
+.prog .chev { display: inline-block; margin-left: 3px; font-family: var(--ui); font-size: 11px; transition: transform .2s ease; }
+.prog .chev.open { transform: rotate(90deg); }
 .row.done .txt, .row.moved .txt { color: var(--ink-soft); }
 .row.dropped .txt { color: var(--ink-soft); text-decoration: line-through; text-decoration-thickness: 2px; text-decoration-color: var(--ink); }
 .tail { font-size: var(--fs-note); line-height: 1; color: var(--red); margin-left: 6px; white-space: nowrap; }

@@ -2,7 +2,8 @@
 //
 // doc = { version: 1, items: { [id]: Item } }
 // Item = { id, text, list: "YYYY-MM-DD" | "dump", status: "open"|"done"|"moved"|"dropped",
-//          order, from?, fromId?, movedTo?, createdAt, updatedAt, deleted? }
+//          order, parent?, from?, fromId?, movedTo?, createdAt, updatedAt, deleted? }
+// Subtarefa = item com `parent` (id da tarefa principal) e a mesma `list` dela.
 //
 // Toda mudança atualiza `updatedAt`. A sincronização mescla item a item: vence o mais recente.
 // Exclusões viram "lápide" (deleted: true) para não ressuscitarem na mesclagem.
@@ -30,10 +31,28 @@ export function stamp() {
 
 const byOrder = (a, b) => a.order - b.order || a.createdAt - b.createdAt || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
 
-export const listItems = (doc, list) =>
-  Object.values(doc.items).filter(i => i.list === list && !i.deleted).sort(byOrder);
+/** Ordem automática: abertas (na ordem escolhida) → feitas → adiadas → riscadas. */
+export const RANK = { open: 0, done: 1, moved: 2, dropped: 3 };
+const byRank = (a, b) => (RANK[a.status] ?? 0) - (RANK[b.status] ?? 0) || byOrder(a, b);
 
-export const nextOrder = (doc, list) => Math.max(0, ...listItems(doc, list).map(i => i.order)) + 1;
+/** Tarefas principais de uma folha, já na ordem de exibição. */
+export const listItems = (doc, list) =>
+  Object.values(doc.items).filter(i => i.list === list && !i.deleted && !i.parent).sort(byRank);
+
+/** Subtarefas de uma tarefa, na ordem de exibição. */
+export const children = (doc, parentId) =>
+  Object.values(doc.items).filter(i => i.parent === parentId && !i.deleted).sort(byRank);
+
+const siblings = (doc, list, parent) =>
+  Object.values(doc.items).filter(i => !i.deleted && (parent ? i.parent === parent : i.list === list && !i.parent));
+
+export const nextOrder = (doc, list, parent = null) => Math.max(0, ...siblings(doc, list, parent).map(i => i.order)) + 1;
+
+/** "1/3": feitas / não riscadas. Vazio se não tem subtarefas. */
+export function progress(doc, id) {
+  const live = children(doc, id).filter(c => c.status !== 'dropped');
+  return live.length ? `${live.filter(c => c.status === 'done').length}/${live.length}` : '';
+}
 
 function touch(it, patch) {
   Object.assign(it, patch);
@@ -57,6 +76,26 @@ export function addItem(doc, list, text) {
   return put(doc, newId(), { text, list, status: 'open', order: nextOrder(doc, list) });
 }
 
+export function addSub(doc, parentId, text) {
+  const p = doc.items[parentId];
+  text = String(text || '').trim();
+  if (!p || p.deleted || p.parent || !text) return null;
+  const it = put(doc, newId(), { text, list: p.list, parent: parentId, status: 'open', order: nextOrder(doc, p.list, parentId) });
+  syncParent(doc, parentId);
+  return it;
+}
+
+/** Tarefa principal acompanha as subtarefas: todas feitas → feita; alguma reaberta → aberta. */
+function syncParent(doc, parentId) {
+  const p = doc.items[parentId];
+  if (!p || p.deleted) return;
+  const live = children(doc, parentId).filter(c => c.status !== 'dropped' && c.status !== 'moved');
+  if (!live.length) return;
+  const allDone = live.every(c => c.status === 'done');
+  if (allDone && p.status === 'open') touch(p, { status: 'done' });
+  else if (!allDone && p.status === 'done') touch(p, { status: 'open' });
+}
+
 export function editItem(doc, id, text) {
   const it = doc.items[id];
   text = String(text || '').trim();
@@ -67,54 +106,81 @@ export function editItem(doc, id, text) {
 /** Para onde "adiar" manda: dia seguinte; se a folha já passou, vem pra hoje. */
 export const postponeTarget = (it, now) => (it.list < now ? now : addDays(it.list, 1));
 
-export function postpone(doc, id, now, to = postponeTarget(doc.items[id], now)) {
+export function postpone(doc, id, now, to) {
   const it = doc.items[id];
-  if (!it || it.list === DUMP) return null;
+  if (!it || it.list === DUMP || it.parent) return null;
+  to = to || postponeTarget(it, now);
+  const subs = children(doc, id).filter(c => c.status === 'open');
   touch(it, { status: 'moved', movedTo: to });
   // id determinístico: se iPhone e iPad adiarem a mesma tarefa, a cópia é a mesma.
-  return put(doc, `m:${id}:${to}`, {
+  const copyId = `m:${id}:${to}`;
+  const copy = put(doc, copyId, {
     text: it.text, list: to, status: 'open', order: nextOrder(doc, to), from: it.list, fromId: id,
-    movedTo: undefined
+    movedTo: undefined, parent: undefined
   });
+  // só as subtarefas que faltavam vão junto; as feitas ficam registradas no dia
+  for (const c of subs) {
+    touch(c, { status: 'moved', movedTo: to });
+    put(doc, `m:${c.id}:${to}`, { text: c.text, list: to, parent: copyId, status: 'open', order: c.order, fromId: c.id, from: undefined, movedTo: undefined });
+  }
+  return copy;
 }
 
 export function restore(doc, id) {
   const it = doc.items[id];
   if (!it) return;
   if (it.status === 'moved') {
-    for (const c of Object.values(doc.items)) if (c.fromId === id && !c.deleted && c.list === it.movedTo) touch(c, { deleted: true });
+    const undo = x => {
+      for (const c of Object.values(doc.items)) if (c.fromId === x.id && !c.deleted && c.list === x.movedTo) removeItem(doc, c.id);
+    };
+    undo(it);
+    // subtarefas que foram junto voltam também
+    for (const c of children(doc, id)) if (c.status === 'moved' && c.movedTo === it.movedTo) { undo(c); touch(c, { status: 'open', movedTo: undefined }); }
   }
   touch(it, { status: 'open', movedTo: undefined });
+  if (it.parent) syncParent(doc, it.parent);
 }
 
 export function toggle(doc, id) {
   const it = doc.items[id];
   if (!it) return;
-  if (it.status === 'open') touch(it, { status: 'done' });
-  else if (it.status === 'moved') restore(doc, id);
-  else touch(it, { status: 'open' });
+  if (it.status === 'moved') return restore(doc, id);
+  setStatus(doc, id, it.status === 'open' ? 'done' : 'open');
 }
 
 export function setStatus(doc, id, status) {
   const it = doc.items[id];
-  if (it && STATUSES.includes(status) && status !== 'moved') touch(it, { status });
+  if (!it || !STATUSES.includes(status) || status === 'moved') return;
+  touch(it, { status });
+  // marcar a principal marca as subtarefas abertas junto
+  if (!it.parent && status === 'done') for (const c of children(doc, id)) if (c.status === 'open') touch(c, { status: 'done' });
+  if (it.parent) syncParent(doc, it.parent);
+}
+
+/** Muda a tarefa (e as subtarefas) de folha. */
+function relocate(doc, it, list) {
+  touch(it, { list, from: it.list, fromId: undefined, status: 'open', movedTo: undefined, order: nextOrder(doc, list) });
+  for (const c of children(doc, it.id)) touch(c, { list, fromId: undefined, movedTo: undefined, status: c.status === 'moved' ? 'open' : c.status });
 }
 
 export function toDump(doc, id) {
   const it = doc.items[id];
-  if (!it || it.list === DUMP) return;
-  touch(it, { list: DUMP, from: it.list, fromId: undefined, status: 'open', movedTo: undefined, order: nextOrder(doc, DUMP) });
+  if (!it || it.list === DUMP || it.parent) return;
+  relocate(doc, it, DUMP);
 }
 
 export function toDay(doc, id, day) {
   const it = doc.items[id];
-  if (!it || it.list === day) return;
-  touch(it, { list: day, from: it.list, fromId: undefined, status: 'open', movedTo: undefined, order: nextOrder(doc, day) });
+  if (!it || it.list === day || it.parent) return;
+  relocate(doc, it, day);
 }
 
 export function removeItem(doc, id) {
   const it = doc.items[id];
-  if (it && !it.deleted) touch(it, { deleted: true });
+  if (!it || it.deleted) return;
+  touch(it, { deleted: true });
+  for (const c of Object.values(doc.items)) if (c.parent === id && !c.deleted) touch(c, { deleted: true });
+  if (it.parent) syncParent(doc, it.parent);
 }
 
 /** ids na nova ordem; só toca nos que mudaram de posição. */
@@ -128,7 +194,7 @@ export function reorder(doc, ids) {
 /** Tarefas abertas em dias anteriores a hoje. */
 export const pending = (doc, now) =>
   Object.values(doc.items)
-    .filter(i => !i.deleted && i.status === 'open' && isDayKey(i.list) && i.list < now)
+    .filter(i => !i.deleted && !i.parent && i.status === 'open' && isDayKey(i.list) && i.list < now)
     .sort((a, b) => (a.list < b.list ? -1 : a.list > b.list ? 1 : byOrder(a, b)));
 
 export function review(doc, bringIds, dropRest, now) {
@@ -192,6 +258,7 @@ export function sanitize(input) {
       createdAt: Number.isFinite(raw.createdAt) ? raw.createdAt : 0,
       updatedAt: Number.isFinite(raw.updatedAt) ? raw.updatedAt : 0
     };
+    if (typeof raw.parent === 'string') it.parent = raw.parent;
     if (typeof raw.from === 'string') it.from = raw.from;
     if (typeof raw.fromId === 'string') it.fromId = raw.fromId;
     if (typeof raw.movedTo === 'string') it.movedTo = raw.movedTo;

@@ -97,16 +97,19 @@ const step = (name) => console.log('•', name);
     assert.deepEqual(await rows(phone), ['Academia', 'Ligar pro dentista', 'Comprar café']);
     assert.equal(await phone.evaluate(() => document.activeElement.id), `add-${TODAY}`);
 
-    step('tocar marca como feita');
-    await phone.click('.row[data-id] .txt >> nth=0');
-    assert.ok(await phone.$eval('.row[data-id] >> nth=0', e => e.classList.contains('done')));
+    step('caixinha marca; a feita desce pro fim (ordem automática)');
+    await phone.click('.row:has-text("Academia") .box');
+    assert.ok(await phone.$eval('.row:has-text("Academia")', e => e.classList.contains('done')));
+    await phone.waitForTimeout(400);
+    assert.deepEqual(await rows(phone), ['Ligar pro dentista', 'Comprar café', 'Academia']);
 
-    step('menu ⋯ (popup no meio) → adiar pra amanhã');
-    await phone.click('.row[data-id] >> nth=1 >> .more');
+    step('menu ⋯ (popup no meio) → adiar pra amanhã; adiada fica depois das feitas');
+    await phone.click('.row:has-text("Ligar pro dentista") .more');
     assert.ok(await phone.$('.overlay.center'));
     await phone.screenshot({ path: `${SHOTS}/02-iphone-menu.png` });
     await phone.click('[data-act="m-post"]');
-    assert.ok(await phone.$eval('.row[data-id] >> nth=1', e => e.classList.contains('moved')));
+    assert.ok(await phone.$eval('.row:has-text("Ligar pro dentista")', e => e.classList.contains('moved')));
+    assert.deepEqual(await rows(phone), ['Comprar café', 'Academia', 'Ligar pro dentista']);
     await phone.click('[data-act="next"]');
     assert.deepEqual(await rows(phone), ['Ligar pro dentista']);
     assert.match(await phone.$eval('.mnote', e => e.textContent), /hoje/);
@@ -120,34 +123,71 @@ const step = (name) => console.log('•', name);
     await phone.mouse.up();
     assert.equal(await phone.$eval('.blank', e => e.textContent), (() => { const [y, m, d] = TOMORROW.split('-'); return `${d}/${m}/${y.slice(2)}`; })());
     await phone.click('.weekday'); // volta pra hoje
-    assert.deepEqual(await rows(phone), ['Academia', 'Ligar pro dentista', 'Comprar café']);
-
-    step('segurar e arrastar reordena');
-    const r3 = await phone.$eval('.row[data-id] >> nth=2', e => { const r = e.getBoundingClientRect(); return { x: r.x + 150, y: r.y + r.height / 2, h: r.height }; });
-    await phone.mouse.move(r3.x, r3.y);
-    await phone.mouse.down();
-    await phone.waitForTimeout(550);
-    await phone.mouse.move(r3.x, r3.y - r3.h * 2, { steps: 8 });
-    await phone.mouse.up();
     assert.deepEqual(await rows(phone), ['Comprar café', 'Academia', 'Ligar pro dentista']);
 
+    step('segurar e arrastar reordena as abertas');
+    await add(phone, TODAY, 'Pagar conta');
+    await phone.click('.sheet .head'); // tira o foco do campo
+    assert.deepEqual(await rows(phone), ['Comprar café', 'Pagar conta', 'Academia', 'Ligar pro dentista']);
+    const r2 = await phone.$eval('.row:has-text("Pagar conta") .txt', e => { const r = e.getBoundingClientRect(); return { x: r.x + 60, y: r.y + r.height / 2, h: r.height }; });
+    await phone.mouse.move(r2.x, r2.y);
+    await phone.mouse.down();
+    await phone.waitForTimeout(550);
+    await phone.mouse.move(r2.x, r2.y - r2.h * 1.2, { steps: 8 });
+    await phone.mouse.up();
+    await phone.waitForTimeout(400);
+    assert.deepEqual(await rows(phone), ['Pagar conta', 'Comprar café', 'Academia', 'Ligar pro dentista']);
+    assert.equal(await phone.$('.group:has-text("Pagar conta") .subs'), null, 'arrastar pelo texto não abre a sanfona');
+
     step('editar texto pelo menu');
-    await phone.click('.row[data-id] >> nth=0 >> .more');
+    await phone.click('.row:has-text("Comprar café") .more');
     await phone.click('[data-act="m-edit"]');
     await phone.fill('.edit', 'Comprar café e pão');
     await phone.keyboard.press('Enter');
-    assert.equal((await rows(phone))[0], 'Comprar café e pão');
+    assert.ok((await rows(phone)).includes('Comprar café e pão'));
+
+    step('subtarefas: texto abre a sanfona, Enter adiciona e continua no campo');
+    await add(phone, TODAY, 'Estudar');
+    await phone.click('.row:has-text("Estudar") .txt');
+    const subInput = await phone.evaluate(() => document.activeElement.dataset.subadd);
+    assert.ok(subInput, 'campo de subtarefa focado');
+    await phone.keyboard.type('anatomia'); await phone.keyboard.press('Enter');
+    await phone.keyboard.type('fisiologia'); await phone.keyboard.press('Enter');
+    assert.equal(await phone.evaluate(() => document.activeElement.dataset.subadd), subInput);
+    const subs = () => phone.$$eval('.group:has(.row:not(.sub):has-text("Estudar")) .row.sub .txt', els => els.map(e => e.textContent.trim()));
+    assert.deepEqual(await subs(), ['Anatomia', 'Fisiologia']);
+    assert.match(await phone.$eval('.row:not(.sub):has-text("Estudar") .prog', e => e.textContent), /0\/2/);
+    await phone.waitForTimeout(500); // deixa a animação de reordenar terminar
+    const overlap = await phone.$$eval('.list > .group', gs => gs.some((g, i) => i && g.getBoundingClientRect().top < gs[i - 1].getBoundingClientRect().bottom - 1));
+    assert.equal(overlap, false, 'nenhuma tarefa por cima da outra');
+    await phone.screenshot({ path: `${SHOTS}/10-iphone-subtarefas.png` });
+
+    step('terminar as subtarefas marca a principal e ela desce');
+    await phone.click('.row.sub:has-text("Anatomia") .box');
+    await phone.click('.row.sub:has-text("Fisiologia") .box');
+    await phone.waitForTimeout(400);
+    assert.ok(await phone.$eval('.row:not(.sub):has-text("Estudar")', e => e.classList.contains('done')));
+    assert.match(await phone.$eval('.row:not(.sub):has-text("Estudar") .prog', e => e.textContent), /2\/2/);
+    await phone.click('.row.sub:has-text("Fisiologia") .box'); // reabrir reabre a principal
+    assert.ok(await phone.$eval('.row:not(.sub):has-text("Estudar")', e => e.classList.contains('open')));
+    await phone.click('.row:not(.sub):has-text("Estudar") .txt'); // fecha a sanfona
+    assert.deepEqual(await subs(), []);
+    await phone.reload();
+    await phone.waitForSelector('.sheet');
+    await phone.click('.row:not(.sub):has-text("Estudar") .txt');
+    assert.deepEqual(await subs(), ['Fisiologia', 'Anatomia'], 'subtarefas salvas, feita depois da aberta');
+    await phone.click('.row:not(.sub):has-text("Estudar") .txt');
 
     step('dump: adicionar e puxar pra hoje; tarefa do dia vai pro dump');
     await phone.click('[data-act="tab-dump"]');
     await add(phone, 'dump', 'Organizar fotos');
     await add(phone, 'dump', 'Trocar pneu da bike');
-    await phone.click('[data-sheet="dump"] .row[data-id] >> nth=0 >> .more');
+    await phone.click('[data-sheet="dump"] .row:has-text("Organizar fotos") .more');
     await phone.click('[data-act="m-today"]');
     assert.deepEqual(await dumpRows(phone), ['Trocar pneu da bike']);
     await phone.click('[data-act="tab-day"]');
     assert.ok((await rows(phone)).includes('Organizar fotos'));
-    await phone.click('.row[data-id] >> nth=0 >> .more');
+    await phone.click('.row:has-text("Comprar café e pão") .more');
     await phone.click('[data-act="m-dump"]');
     await phone.click('[data-act="tab-dump"]');
     assert.ok((await dumpRows(phone)).includes('Comprar café e pão'));
@@ -292,7 +332,7 @@ const step = (name) => console.log('•', name);
 
     step('mudança no iPad aparece no iPhone');
     await add(tablet, TODAY, 'Escrito no iPad');
-    await tablet.click('[data-sheet="day"] .row[data-id] .txt >> nth=0');
+    await tablet.click('[data-sheet="day"] .row[data-id] .box >> nth=0');
     await tablet.waitForFunction(() => document.querySelector('.sync').dataset.s === 'ok' && !document.querySelector('.sync[data-s="syncing"]'), null, { timeout: 8000 });
     await tablet.waitForTimeout(3500); // debounce + PATCH
     assert.ok(gh.gist.content.includes('Escrito no iPad'));
