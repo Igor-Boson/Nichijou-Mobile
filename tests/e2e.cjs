@@ -146,14 +146,15 @@ const step = (name) => console.log('•', name);
     await phone.keyboard.press('Enter');
     assert.ok((await rows(phone)).includes('Comprar café e pão'));
 
-    step('subtarefas: tocar no texto não faz nada; o V abre, Enter adiciona e continua no campo');
+    step('subtarefas: sem V em tarefa sem subtarefa; cria pelo ⋯; Enter adiciona e continua no campo');
     await add(phone, TODAY, 'Estudar');
     await phone.click('.sheet .head');
     await phone.click('.row:has-text("Estudar") .txt');
     assert.equal(await phone.$('.add.sub'), null, 'texto não abre');
     assert.ok(await phone.$eval('.row:has-text("Estudar")', e => e.classList.contains('open')), 'texto não marca');
-    assert.ok(await phone.$('.row:has-text("Academia") .vbtn'), 'V também nas feitas');
-    await phone.click('.row:has-text("Estudar") .vbtn');
+    assert.equal(await phone.$('.row:has-text("Estudar") .vbtn'), null, 'sem V enquanto não tem subtarefa');
+    await phone.click('.row:has-text("Estudar") .more');
+    await phone.click('[data-act="m-sub"]');
     const subInput = await phone.evaluate(() => document.activeElement.dataset.subadd);
     assert.ok(subInput, 'campo de subtarefa focado');
     await phone.keyboard.type('anatomia'); await phone.keyboard.press('Enter');
@@ -161,6 +162,8 @@ const step = (name) => console.log('•', name);
     assert.equal(await phone.evaluate(() => document.activeElement.dataset.subadd), subInput);
     const subs = () => phone.$$eval('.group:has(.row:not(.sub):has-text("Estudar")) .row.sub .txt', els => els.map(e => e.textContent.trim()));
     assert.deepEqual(await subs(), ['Anatomia', 'Fisiologia']);
+    assert.ok(await phone.$('.row:not(.sub):has-text("Estudar") .vbtn'), 'com subtarefas, aparece o V');
+    assert.equal(await phone.$('.row:has-text("Pagar conta") .vbtn'), null);
     assert.match(await phone.$eval('.row:not(.sub):has-text("Estudar") .prog', e => e.textContent), /0\/2/);
     await phone.waitForTimeout(500); // deixa a animação de reordenar terminar
     const overlap = await phone.$$eval('.list > .group', gs => gs.some((g, i) => i && g.getBoundingClientRect().top < gs[i - 1].getBoundingClientRect().bottom - 1));

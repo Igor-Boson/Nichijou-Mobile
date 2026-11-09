@@ -5,7 +5,7 @@ import * as D from './dates.js';
 import { store } from './store.js';
 import { sync } from './sync.js';
 
-const VERSION = '1.4.0';
+const VERSION = '1.5.0';
 const $app = document.getElementById('app');
 const wide = window.matchMedia('(min-width: 820px)');
 
@@ -60,6 +60,7 @@ const ARROW_BACK = '↩︎'; // ↩ como texto (sem virar emoji no iOS)
 
 /* ---------- partes da tela ---------- */
 // Caixinha marca; o "V" no fim da linha abre/fecha as subtarefas (sanfona). Subtarefas ficam recuadas.
+// O V só aparece em quem tem subtarefas (ou está aberta); a primeira subtarefa se cria pelo ⋯.
 function row(it, sub = false) {
   const cls = `row ${sub ? 'sub ' : ''}`;
   if (UI.editing === it.id) {
@@ -71,7 +72,7 @@ function row(it, sub = false) {
   const prog = sub ? '' : M.progress(doc(), it.id);
   const open = !sub && UI.expanded.has(it.id);
   const vLabel = `${open ? 'Fechar' : prog ? 'Abrir' : 'Adicionar'} subtarefas de ${esc(it.text)}`;
-  const vbtn = sub ? '<span></span>' : `<button class="vbtn${prog ? ' has' : ''}${open ? ' open' : ''}" data-act="open" data-id="${it.id}" aria-expanded="${open}" aria-label="${vLabel}"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 6 8 10.5 12.5 6"/></svg></button>`;
+  const vbtn = sub || !(prog || open) ? '<span></span>' : `<button class="vbtn${prog ? ' has' : ''}${open ? ' open' : ''}" data-act="open" data-id="${it.id}" aria-expanded="${open}" aria-label="${vLabel}"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 6 8 10.5 12.5 6"/></svg></button>`;
   return `<div class="${cls}${it.status}" data-id="${it.id}" data-key="${it.id}">
     <div class="mnote">${note}</div>
     <span class="box" role="button" tabindex="0" data-act="check" data-id="${it.id}" aria-label="${esc(it.text)}: ${STATUS_LABEL[it.status]}. Marcar">${boxSvg(it.status, UI.drawId === it.id)}</span>
@@ -108,7 +109,7 @@ function daySheet() {
       <div class="list" data-list="${k}">${its.map(group).join('')}</div>
       <div class="empty" ${its.length ? 'hidden' : ''}>${k > UI.now ? 'folha em branco, planeja aqui' : k < UI.now ? 'nada anotado' : ''}</div>
       ${addRow(k)}
-      ${firstUse && k === UI.now ? '<div class="hint">caixinha marca · V abre subtarefas · segure e arraste pra reordenar</div>' : ''}
+      ${firstUse && k === UI.now ? '<div class="hint">caixinha marca · ⋯ pra opções e subtarefas · segure e arraste pra reordenar</div>' : ''}
     </div>
   </section>`;
 }
@@ -198,6 +199,7 @@ function menuPanel(it) {
   } else {
     list.push(b('m-restore', '↺', it.status === 'moved' ? 'Desfazer adiamento' : 'Voltar a pendente'));
   }
+  list.push(b('m-sub', '↳', 'Adicionar subtarefa'));
   list.push(b('m-edit', '✎', 'Editar texto'));
   list.push(b('m-del', '×', 'Excluir', 'danger'));
   return `<p class="muted">${inDump ? 'Dump' : (D.relative(it.list, UI.now) || D.dm(it.list))} · ${STATUS_LABEL[it.status]}</p>
@@ -634,6 +636,13 @@ async function onAction(a, id) {
     case 'm-today': close(); act(d => M.toDay(d, id, UI.now)); return toast('Puxada pra hoje');
     case 'm-restore': close(); return act(d => M.restore(d, id));
     case 'm-edit': close(); UI.editing = id; break;
+    case 'm-sub':
+      // abre a sanfona com a linha de subtarefa já focada (no mesmo toque, para o teclado do iPhone abrir)
+      close();
+      UI.expanded.add(id);
+      render();
+      $app.querySelector(`#sub-${CSS.escape(id)}`)?.focus();
+      return;
     case 'm-del': {
       close();
       const withSubs = M.children(doc(), id).length > 0;
