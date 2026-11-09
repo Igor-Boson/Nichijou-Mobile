@@ -1,7 +1,7 @@
 // Service worker: guarda o app no aparelho para abrir offline.
 // Ao publicar uma versão nova, mude VERSION: o app baixa tudo de novo e recarrega sozinho.
 
-const VERSION = 'nichijou-1.3.0';
+const VERSION = 'nichijou-1.4.0';
 const ASSETS = [
   './',
   './index.html',
