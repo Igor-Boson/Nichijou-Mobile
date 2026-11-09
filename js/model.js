@@ -209,7 +209,10 @@ export function review(doc, bringIds, dropRest, now) {
 
 const newer = (a, b) => {
   if (a.updatedAt !== b.updatedAt) return a.updatedAt > b.updatedAt ? a : b;
-  // empate: escolha determinística, igual nos dois aparelhos
+  // empate: fica a cópia mais completa (uma versão antiga do app pode ter descartado campos);
+  // se as duas têm os mesmos campos, escolha determinística, igual em todos os aparelhos
+  const ka = Object.keys(a).length, kb = Object.keys(b).length;
+  if (ka !== kb) return ka > kb ? a : b;
   return JSON.stringify(a) >= JSON.stringify(b) ? a : b;
 };
 
@@ -225,6 +228,8 @@ export function merge(a, b) {
     const x = a.items[id], y = b.items[id];
     const pick = x && y ? newer(x, y) : x || y;
     items[id] = { ...pick };
+    // uma subtarefa nunca deixa de ser subtarefa: o vínculo vence mesmo se a outra cópia o perdeu
+    if (!items[id].parent && x && y && (x.parent || y.parent)) items[id].parent = x.parent || y.parent;
     if (!x || (pick !== x && JSON.stringify(x) !== JSON.stringify(pick))) changedA = true;
     if (!y || (pick !== y && JSON.stringify(y) !== JSON.stringify(pick))) changedB = true;
   }
@@ -245,6 +250,7 @@ export function sanitize(input) {
     throw new Error('Arquivo não parece um backup do 日常.');
   }
   const items = {};
+  const KNOWN = new Set(['id', 'text', 'list', 'status', 'order', 'createdAt', 'updatedAt', 'parent', 'from', 'fromId', 'movedTo', 'deleted']);
   for (const [id, raw] of Object.entries(input.items)) {
     if (!raw || typeof raw !== 'object') continue;
     if (typeof raw.text !== 'string' || typeof raw.list !== 'string') continue;
@@ -263,6 +269,12 @@ export function sanitize(input) {
     if (typeof raw.fromId === 'string') it.fromId = raw.fromId;
     if (typeof raw.movedTo === 'string') it.movedTo = raw.movedTo;
     if (raw.deleted === true) it.deleted = true;
+    // campos que esta versão ainda não conhece são preservados (simples e curtos), para não apagar
+    // informação de versões mais novas do app
+    for (const [k, v] of Object.entries(raw)) {
+      if (KNOWN.has(k) || k.length > 40 || k === '__proto__' || k === 'constructor' || k === 'prototype') continue;
+      if (typeof v === 'boolean' || Number.isFinite(v) || (typeof v === 'string' && v.length <= 200)) it[k] = v;
+    }
     items[id] = it;
   }
   return { version: 1, items };
