@@ -116,6 +116,36 @@ async function writeGist(token, id, doc) {
   remoteCache = sanitize(JSON.parse(content));
 }
 
+/**
+ * Conserto único (por aparelho): uma versão antiga do app, aberta em algum lugar, pode ter salvo
+ * subtarefas sem o vínculo com a tarefa principal. O gist guarda cada versão salva; aqui olhamos
+ * as versões desde que as subtarefas existem e devolvemos o vínculo perdido.
+ */
+const SUBTASKS_SINCE = '2026-11-09T19:00:00Z';
+async function repairParents(token, gistId) {
+  const { data } = await gh(token, `/gists/${gistId}`);
+  const all = (data.history || []).filter(h => h.committed_at >= SUBTASKS_SINCE); // mais novas primeiro
+  // até 150 versões: as mais recentes e as primeiras depois que as subtarefas surgiram
+  const history = all.length <= 150 ? all : [...all.slice(0, 75), ...all.slice(-75)];
+  const lost = new Set(Object.values(store.doc.items).filter(i => !i.parent && !i.deleted).map(i => i.id));
+  const found = {};
+  for (const h of history) {
+    if (!lost.size) break;
+    try {
+      const { data: rev } = await gh(token, `/gists/${gistId}/${h.version}`);
+      const file = rev.files && rev.files[GIST_FILE];
+      if (!file) continue;
+      const content = file.truncated ? await (await fetch(file.raw_url, { cache: 'no-store' })).text() : file.content;
+      for (const [id, it] of Object.entries(JSON.parse(content).items || {})) {
+        if (it && typeof it.parent === 'string' && lost.has(id)) { found[id] = it.parent; lost.delete(id); }
+      }
+    } catch (_) { /* uma versão ilegível não impede as outras */ }
+  }
+  const ids = Object.keys(found).filter(id => store.doc.items[id] && store.doc.items[found[id]]);
+  if (ids.length) store.update(d => { for (const id of ids) if (!d.items[id].parent) d.items[id].parent = found[id]; });
+  return ids.length;
+}
+
 async function runSync() {
   const { token } = store.meta;
   let { gistId } = store.meta;
@@ -145,6 +175,12 @@ async function runSync() {
     if (changedA) store.replace(doc);
     if (changedB) await writeGist(token, gistId, doc);
     store.setMeta({ lastSyncAt: Date.now() });
+    if (!store.meta.parentsRepaired) {
+      try {
+        const n = await repairParents(token, gistId);
+        store.setMeta({ parentsRepaired: true, parentsRepairedCount: n });
+      } catch (_) { /* tenta de novo na próxima sincronização */ }
+    }
     set('ok');
   } catch (e) {
     if (e.httpStatus === 0) set('offline');

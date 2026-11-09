@@ -19,7 +19,8 @@ const YDAY = keyOf(new Date(Date.now() - 86400000));
 const TOMORROW = keyOf(new Date(Date.now() + 86400000));
 
 /* ---------- GitHub simulado ---------- */
-const gh = { gist: null, etag: 1, calls: [] };
+const gh = { gist: null, etag: 1, calls: [], history: [] };
+const saveRevision = () => gh.history.unshift({ version: `v${gh.history.length + 1}`, committed_at: new Date().toISOString(), content: gh.gist.content });
 const CORS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, PATCH, OPTIONS',
@@ -39,16 +40,23 @@ async function githubRoute(route) {
   if (u.pathname === '/gists' && method === 'POST') {
     const body = JSON.parse(req.postData());
     gh.gist = { id: 'g1', content: body.files['nichijou.json'].content };
+    saveRevision();
     gh.etag++;
     return json(201, { id: 'g1' });
   }
   if (u.pathname === '/gists/g1' && method === 'GET') {
     const tag = `"e${gh.etag}"`;
     if (req.headers()['if-none-match'] === tag) return route.fulfill({ status: 304, headers: { ...CORS, ETag: tag } });
-    return json(200, { id: 'g1', files: { 'nichijou.json': { content: gh.gist.content, truncated: false } } }, { ETag: tag });
+    return json(200, { id: 'g1', files: { 'nichijou.json': { content: gh.gist.content, truncated: false } }, history: gh.history.map(h => ({ version: h.version, committed_at: h.committed_at })) }, { ETag: tag });
+  }
+  const rev = u.pathname.match(/^\/gists\/g1\/(v\d+)$/);
+  if (rev && method === 'GET') {
+    const h = gh.history.find(x => x.version === rev[1]);
+    return h ? json(200, { id: 'g1', files: { 'nichijou.json': { content: h.content, truncated: false } } }) : json(404, { message: 'Not Found' });
   }
   if (u.pathname === '/gists/g1' && method === 'PATCH') {
     gh.gist.content = JSON.parse(req.postData()).files['nichijou.json'].content;
+    saveRevision();
     gh.etag++;
     return json(200, { id: 'g1' }, { ETag: `"e${gh.etag}"` });
   }
@@ -369,6 +377,41 @@ const step = (name) => console.log('•', name);
     assert.ok((await rows(tablet)).includes('Offline no iPhone'));
 
     // o 401 do passo "token errado" é esperado
+    step('versão antiga do app tira o vínculo das subtarefas no gist: o iPad conserta e mostra certo');
+    // garante que o iPhone já salvou as subtarefas de "Estudar" no gist
+    await phone.click('.gear');
+    await phone.click('[data-act="sync-now"]');
+    await phone.waitForTimeout(1500);
+    await phone.click('[data-act="close"]');
+    assert.ok(/"parent"/.test(gh.gist.content), 'gist tem as subtarefas');
+    // simula a versão 1.2: mesmo conteúdo, sem "parent", mesmo updatedAt
+    const broken = JSON.parse(gh.gist.content);
+    for (const it of Object.values(broken.items)) delete it.parent;
+    gh.gist.content = JSON.stringify(broken); gh.etag++; saveRevision();
+    // um iPad novo (sem nada salvo) conecta e recebe o gist estragado
+    const { ctx: pad2Ctx, page: pad2 } = await newPage(browser, ipad, errors);
+    await pad2.click('.rail [data-act="settings"]');
+    await pad2.fill('#token', 'test-token');
+    await pad2.click('[data-act="connect"]');
+    await pad2.waitForSelector('.conn');
+    await pad2.waitForTimeout(1500);
+    await pad2.click('[data-act="close"]');
+    assert.ok(!(await rows(pad2)).includes('Anatomia'), 'Anatomia não vira tarefa solta');
+    await pad2.click('.row:not(.sub):has-text("Estudar") .vbtn');
+    const padSubs = await pad2.$$eval('.row.sub .txt', els => els.map(e => e.textContent.trim()));
+    assert.deepEqual(padSubs.sort(), ['Anatomia', 'Fisiologia']);
+    await pad2.waitForTimeout(400);
+    await pad2.screenshot({ path: `${SHOTS}/11-ipad-subtarefas.png` });
+    await pad2.waitForTimeout(3500); // debounce + PATCH: o conserto volta pro gist
+    assert.ok(/"parent"/.test(gh.gist.content), 'gist consertado');
+    // o iPhone, que estava certo, continua certo depois de sincronizar
+    await phone.click('.gear');
+    await phone.click('[data-act="sync-now"]');
+    await phone.waitForTimeout(1200);
+    await phone.click('[data-act="close"]');
+    assert.ok(!(await rows(phone)).includes('Anatomia'));
+    await pad2Ctx.close();
+
     assert.deepEqual(errors.filter(e => !/status of 401/.test(e)), [], 'sem erros no console');
     console.log(`\nOK — todos os passos passaram. Chamadas ao GitHub simulado: ${gh.calls.length}`);
   } catch (e) {

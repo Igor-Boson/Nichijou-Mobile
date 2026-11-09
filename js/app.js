@@ -5,7 +5,7 @@ import * as D from './dates.js';
 import { store } from './store.js';
 import { sync } from './sync.js';
 
-const VERSION = '1.5.0';
+const VERSION = '1.5.1';
 const $app = document.getElementById('app');
 const wide = window.matchMedia('(min-width: 820px)');
 

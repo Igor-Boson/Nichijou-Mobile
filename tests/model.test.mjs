@@ -138,10 +138,12 @@ test('purge remove lápides com mais de 30 dias', () => {
 test('sanitize recusa lixo e limpa campos', () => {
   assert.throws(() => M.sanitize(null));
   assert.throws(() => M.sanitize({ foo: 1 }));
-  const s = M.sanitize({ items: { a: { text: 'ok', list: T, status: 'weird', evil: '<script>' }, b: { text: 1, list: T }, c: { text: 'x', list: 'nope' } } });
+  const s = M.sanitize({ items: { a: { text: 'ok', list: T, status: 'weird', obj: { x: 1 }, ['__proto__']: 'x', long: 'x'.repeat(500) }, b: { text: 1, list: T }, c: { text: 'x', list: 'nope' } } });
   assert.deepEqual(Object.keys(s.items), ['a']);
   assert.equal(s.items.a.status, 'open');
-  assert.equal(s.items.a.evil, undefined);
+  assert.equal(s.items.a.obj, undefined, 'objetos desconhecidos são descartados');
+  assert.equal(s.items.a.long, undefined, 'textos longos desconhecidos são descartados');
+  assert.equal(Object.getPrototypeOf(s.items.a), Object.prototype);
 });
 
 /* ---------- ordem automática e subtarefas ---------- */
@@ -243,4 +245,41 @@ test('dump: mandar e puxar levam as subtarefas junto; excluir apaga as subtarefa
 test('sanitize preserva o vínculo da subtarefa', () => {
   const s = M.sanitize({ items: { a: { text: 'x', list: T, parent: 'p1' } } });
   assert.equal(s.items.a.parent, 'p1');
+});
+
+/* ---------- compatibilidade com versões antigas do app ---------- */
+
+test('merge: cópia sem o vínculo (versão antiga) não desfaz a subtarefa, em nenhuma ordem', () => {
+  const d = M.emptyDoc();
+  const p = M.addItem(d, T, 'Estudar');
+  M.addSub(d, p.id, 'Estudar fisio');
+  M.addSub(d, p.id, 'Estudar anato');
+  const old = clone(d);
+  for (const it of Object.values(old.items)) delete it.parent; // como a versão 1.2 salvava
+  for (const [a, b] of [[d, old], [old, d]]) {
+    const r = M.merge(a, b);
+    assert.deepEqual(M.listItems(r.doc, T).map(i => i.text), ['Estudar']);
+    assert.deepEqual(M.children(r.doc, p.id).map(i => i.text), ['Estudar fisio', 'Estudar anato']);
+  }
+  assert.ok(M.merge(d, old).changedB, 'conserta o gist');
+});
+
+test('merge: edição mais nova feita na versão antiga mantém o vínculo da subtarefa', () => {
+  const d = M.emptyDoc();
+  const p = M.addItem(d, T, 'Estudar');
+  const s = M.addSub(d, p.id, 'Fisio');
+  const old = clone(d);
+  delete old.items[s.id].parent;
+  old.items[s.id].status = 'done';
+  old.items[s.id].updatedAt += 1000;
+  const r = M.merge(d, old).doc;
+  assert.equal(r.items[s.id].parent, p.id);
+  assert.equal(r.items[s.id].status, 'done');
+});
+
+test('sanitize preserva campos que ainda não conhece (compatibilidade com versões futuras)', () => {
+  const s = M.sanitize({ items: { a: { text: 'x', list: T, color: 'red', pinned: true, weird: { x: 1 } } } });
+  assert.equal(s.items.a.color, 'red');
+  assert.equal(s.items.a.pinned, true);
+  assert.equal(s.items.a.weird, undefined);
 });
