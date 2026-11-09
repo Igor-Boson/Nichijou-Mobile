@@ -5,7 +5,7 @@ import * as D from './dates.js';
 import { store } from './store.js';
 import { sync } from './sync.js';
 
-const VERSION = '1.3.0';
+const VERSION = '1.4.0';
 const $app = document.getElementById('app');
 const wide = window.matchMedia('(min-width: 820px)');
 
@@ -59,24 +59,24 @@ const STATUS_LABEL = { open: 'pendente', done: 'feita', moved: 'adiada', dropped
 const ARROW_BACK = '↩︎'; // ↩ como texto (sem virar emoji no iOS)
 
 /* ---------- partes da tela ---------- */
-// Caixinha marca; texto abre/fecha as subtarefas (sanfona). Subtarefas ficam recuadas.
+// Caixinha marca; o "V" no fim da linha abre/fecha as subtarefas (sanfona). Subtarefas ficam recuadas.
 function row(it, sub = false) {
   const cls = `row ${sub ? 'sub ' : ''}`;
   if (UI.editing === it.id) {
     return `<div class="${cls}" data-id="${it.id}"><div class="mnote"></div><div class="box">${boxSvg(it.status)}</div>
-      <input class="edit" id="edit-${it.id}" data-edit="${it.id}" value="${esc(it.text)}" aria-label="Editar tarefa" enterkeyhint="done" autocomplete="off" autocapitalize="sentences"><span></span><span></span></div>`;
+      <input class="edit" id="edit-${it.id}" data-edit="${it.id}" value="${esc(it.text)}" aria-label="Editar tarefa" enterkeyhint="done" autocomplete="off" autocapitalize="sentences"><span></span><span></span><span></span></div>`;
   }
   const note = !sub && it.from ? `${ARROW_BACK} ${place(it.from)}` : '';
   const tail = !sub && it.status === 'moved' && it.movedTo ? `<span class="tail">→ ${place(it.movedTo)}</span>` : '';
   const prog = sub ? '' : M.progress(doc(), it.id);
   const open = !sub && UI.expanded.has(it.id);
-  const progHtml = prog ? `<span class="prog">${prog}<span class="chev${open ? ' open' : ''}" aria-hidden="true">›</span></span>` : '<span></span>';
-  const textLabel = sub ? esc(it.text) : `${esc(it.text)}: ${open ? 'fechar' : 'abrir'} subtarefas`;
+  const vLabel = `${open ? 'Fechar' : prog ? 'Abrir' : 'Adicionar'} subtarefas de ${esc(it.text)}`;
+  const vbtn = sub ? '<span></span>' : `<button class="vbtn${prog ? ' has' : ''}${open ? ' open' : ''}" data-act="open" data-id="${it.id}" aria-expanded="${open}" aria-label="${vLabel}"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 6 8 10.5 12.5 6"/></svg></button>`;
   return `<div class="${cls}${it.status}" data-id="${it.id}" data-key="${it.id}">
     <div class="mnote">${note}</div>
     <span class="box" role="button" tabindex="0" data-act="check" data-id="${it.id}" aria-label="${esc(it.text)}: ${STATUS_LABEL[it.status]}. Marcar">${boxSvg(it.status, UI.drawId === it.id)}</span>
-    <span class="txt" ${sub ? '' : `role="button" tabindex="0" data-act="open" data-id="${it.id}" aria-expanded="${open}" aria-label="${textLabel}"`}>${esc(it.text)}${tail}</span>
-    ${progHtml}
+    <span class="txt">${esc(it.text)}${tail}</span>
+    ${prog ? `<span class="prog">${prog}</span>` : '<span></span>'}${vbtn}
     <button class="more" data-act="more" data-id="${it.id}" aria-label="Opções de ${esc(it.text)}">⋯</button></div>`;
 }
 
@@ -108,7 +108,7 @@ function daySheet() {
       <div class="list" data-list="${k}">${its.map(group).join('')}</div>
       <div class="empty" ${its.length ? 'hidden' : ''}>${k > UI.now ? 'folha em branco, planeja aqui' : k < UI.now ? 'nada anotado' : ''}</div>
       ${addRow(k)}
-      ${firstUse && k === UI.now ? '<div class="hint">caixinha marca · texto abre subtarefas · segure e arraste pra reordenar</div>' : ''}
+      ${firstUse && k === UI.now ? '<div class="hint">caixinha marca · V abre subtarefas · segure e arraste pra reordenar</div>' : ''}
     </div>
   </section>`;
 }
@@ -515,7 +515,7 @@ $app.addEventListener('click', e => {
   // botões nunca são ambíguos; só um toque solto na linha logo após um gesto é descartado
   if (Date.now() < suppressUntil) {
     suppressUntil = 0;
-    if (!t || t.dataset.act === 'scrim' || (t.closest('.row') && !t.matches('.more'))) return;
+    if (!t || t.dataset.act === 'scrim' || (t.closest('.row') && !t.matches('.more, .vbtn'))) return;
   }
   if (t && !(t.dataset.act === 'scrim' && e.target !== t)) onAction(t.dataset.act, t.dataset.id);
 });
@@ -614,7 +614,7 @@ async function onAction(a, id) {
       if (doc().items[id]?.status === 'open') UI.drawId = id;
       return act(d => M.toggle(d, id));
     case 'open': {
-      // texto da tarefa abre/fecha as subtarefas; sem subtarefas, já abre a linha para escrever a primeira
+      // o V abre/fecha as subtarefas; sem subtarefas, já abre a linha para escrever a primeira
       if (UI.expanded.has(id)) { UI.expanded.delete(id); break; }
       UI.expanded.add(id);
       render();

@@ -10,7 +10,7 @@ Caderno diário de tarefas para iPhone e iPad. Funciona como um caderno de papel
 |---|---|
 | Nova tarefa | escreva na linha “escreva aqui…” e aperte Enter (o cursor continua lá para a próxima) |
 | Marcar / desmarcar | toque na **caixinha** |
-| Subtarefas | toque no **texto** da tarefa: abre a sanfona com as subtarefas e uma linha para escrever mais; toque de novo para fechar |
+| Subtarefas | toque no **V** no fim da linha (ao lado do ⋯): abre as subtarefas e uma linha para escrever mais; toque de novo para fechar |
 | Adiar, riscar, mandar pro dump, editar, excluir | botão **⋯** da linha |
 | Reordenar | segure a linha e arraste (a tarefa vai com as subtarefas) |
 | Outro dia | deslize a folha para os lados ou use ‹ › (tocar no nome do dia volta para hoje) |

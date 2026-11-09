@@ -146,9 +146,14 @@ const step = (name) => console.log('•', name);
     await phone.keyboard.press('Enter');
     assert.ok((await rows(phone)).includes('Comprar café e pão'));
 
-    step('subtarefas: texto abre a sanfona, Enter adiciona e continua no campo');
+    step('subtarefas: tocar no texto não faz nada; o V abre, Enter adiciona e continua no campo');
     await add(phone, TODAY, 'Estudar');
+    await phone.click('.sheet .head');
     await phone.click('.row:has-text("Estudar") .txt');
+    assert.equal(await phone.$('.add.sub'), null, 'texto não abre');
+    assert.ok(await phone.$eval('.row:has-text("Estudar")', e => e.classList.contains('open')), 'texto não marca');
+    assert.ok(await phone.$('.row:has-text("Academia") .vbtn'), 'V também nas feitas');
+    await phone.click('.row:has-text("Estudar") .vbtn');
     const subInput = await phone.evaluate(() => document.activeElement.dataset.subadd);
     assert.ok(subInput, 'campo de subtarefa focado');
     await phone.keyboard.type('anatomia'); await phone.keyboard.press('Enter');
@@ -170,13 +175,13 @@ const step = (name) => console.log('•', name);
     assert.match(await phone.$eval('.row:not(.sub):has-text("Estudar") .prog', e => e.textContent), /2\/2/);
     await phone.click('.row.sub:has-text("Fisiologia") .box'); // reabrir reabre a principal
     assert.ok(await phone.$eval('.row:not(.sub):has-text("Estudar")', e => e.classList.contains('open')));
-    await phone.click('.row:not(.sub):has-text("Estudar") .txt'); // fecha a sanfona
+    await phone.click('.row:not(.sub):has-text("Estudar") .vbtn'); // fecha a sanfona
     assert.deepEqual(await subs(), []);
     await phone.reload();
     await phone.waitForSelector('.sheet');
-    await phone.click('.row:not(.sub):has-text("Estudar") .txt');
+    await phone.click('.row:not(.sub):has-text("Estudar") .vbtn');
     assert.deepEqual(await subs(), ['Fisiologia', 'Anatomia'], 'subtarefas salvas, feita depois da aberta');
-    await phone.click('.row:not(.sub):has-text("Estudar") .txt');
+    await phone.click('.row:not(.sub):has-text("Estudar") .vbtn');
 
     step('dump: adicionar e puxar pra hoje; tarefa do dia vai pro dump');
     await phone.click('[data-act="tab-dump"]');
